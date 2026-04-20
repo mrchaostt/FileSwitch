@@ -11,6 +11,12 @@ qt_standard_project_setup()
 qt_add_executable(FileSwitch
     src/main.cpp
     src/mainwindow.cpp
+    src/network/discovery.cpp
+    src/network/transfer.cpp
+    src/widgets/devicewidget.cpp
+    src/widgets/filequeuewidget.cpp
+    src/widgets/progresswidget.cpp
+    src/widgets/acceptdialog.cpp
 )
 
 target_link_libraries(FileSwitch PRIVATE Qt6::Core Qt6::Network Qt6::Widgets Qt6::Gui)

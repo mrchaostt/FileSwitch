@@ -13,7 +13,7 @@ public:
     void clearQueue();
 
 signals:
-    void filesReady(bool hasFiles);
+    void filesReady();
 
 private slots:
     void onAddFilesClicked();
