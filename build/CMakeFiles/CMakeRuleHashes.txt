@@ -1,0 +1,3 @@
+# Hashes of file build rules.
+7d0f9341747c962bd2fc52c508b09c76 CMakeFiles/FileSwitch_autogen
+408397db3bb1eb8454982ab281e9f830 FileSwitch_autogen/timestamp

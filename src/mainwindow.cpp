@@ -15,10 +15,29 @@
 #include <QListWidget>
 #include "widgets/acceptdialog.h"
 
+// Claude Design System Constants
+#define COLOR_PARCHMENT QColor(245, 244, 237)    // #f5f4ed - page background
+#define COLOR_IVORY QColor(250, 249, 245)        // #faf9f5 - card surface
+#define COLOR_TERRACOTTA QColor(201, 100, 66)    // #c96442 - brand CTA
+#define COLOR_NEAR_BLACK QColor(20, 20, 19)       // #141413 - primary text
+#define COLOR_WARM_SAND QColor(232, 230, 220)     // #e8e6dc - button bg
+#define COLOR_CHARCOAL_WARM QColor(77, 76, 72)   // #4d4c48 - button text
+#define COLOR_OLIVE_GRAY QColor(94, 93, 89)      // #5e5d59 - secondary text
+#define COLOR_STONE_GRAY QColor(135, 134, 127)    // #87867f - tertiary text
+#define COLOR_BORDER_CREAM QColor(240, 238, 230)  // #f0eee6 - borders
+#define COLOR_WARM_SILVER QColor(176, 174, 165)   // #b0aea5 - text on dark
+#define COLOR_DARK_SURFACE QColor(48, 48, 46)     // #30302e - dark surface
+#define COLOR_WHITE QColor(255, 255, 255)          // #ffffff
+#define COLOR_RING_WARM QColor(209, 207, 197)     // #d1cfc5 - ring shadow
+#define FONT_SERIF "Georgia, 'Times New Roman', serif"
+#define FONT_SANS "system-ui, -apple-system, Arial, sans-serif"
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setWindowTitle("FileSwitch");
+    setMinimumSize(480, 400);
+    setStyleSheet(QString("QMainWindow { background-color: %1; }").arg(COLOR_PARCHMENT.name()));
 
     // Create instances
     m_discovery = new Discovery(this);
@@ -30,33 +49,100 @@ MainWindow::MainWindow(QWidget *parent)
     QString downloadDir = settings.value("downloadDir", QDir::home().filePath("Downloads/FileSwitch")).toString();
     m_transfer->setDownloadDirectory(downloadDir);
 
+    // Set local IP for filtering (exclude self from device list)
+    m_discovery->setLocalIp(m_localIp);
+
     // Start services
     m_discovery->startBroadcasting("FileSwitch");
     m_transfer->startListening();
+
+    // ========== Central Widget ==========
+    QWidget *centralWidget = new QWidget;
+    QVBoxLayout *centralLayout = new QVBoxLayout(centralWidget);
+    centralLayout->setContentsMargins(16, 12, 16, 12);
+    centralLayout->setSpacing(12);
+
+    // App Title - Anthropic Serif style
+    QLabel *titleLabel = new QLabel("FileSwitch");
+    titleLabel->setStyleSheet(QString(
+        "QLabel {"
+        " font-family: %1;"
+        " font-size: 28px;"
+        " font-weight: 500;"
+        " color: %2;"
+        " line-height: 1.10;"
+        "}"
+    ).arg(FONT_SERIF).arg(COLOR_NEAR_BLACK.name()));
+    centralLayout->addWidget(titleLabel);
+
+    // Subtitle
+    QLabel *subtitleLabel = new QLabel("局域网文件传输");
+    subtitleLabel->setStyleSheet(QString(
+        "QLabel {"
+        " font-family: %1;"
+        " font-size: 14px;"
+        " font-weight: 400;"
+        " color: %2;"
+        " line-height: 1.60;"
+        "}"
+    ).arg(FONT_SANS).arg(COLOR_OLIVE_GRAY.name()));
+    centralLayout->addWidget(subtitleLabel);
 
     m_tabWidget = new QTabWidget(this);
 
     // ========== Sender Tab ==========
     QWidget *senderWidget = new QWidget;
+    senderWidget->setStyleSheet(QString(
+        "QWidget { background-color: %1; border-radius: 10px; }"
+    ).arg(COLOR_IVORY.name()));
     QVBoxLayout *senderLayout = new QVBoxLayout(senderWidget);
+    senderLayout->setContentsMargins(16, 16, 16, 16);
+    senderLayout->setSpacing(12);
 
-    // Local IP label at top
-    m_localIpLabel = new QLabel(QString("本机IP: %1").arg(m_localIp));
+    // Local IP label - card style
+    m_localIpLabel = new QLabel(QString("本机 IP: %1").arg(m_localIp));
+    m_localIpLabel->setStyleSheet(QString(
+        "QLabel {"
+        " font-family: %1;"
+        " font-size: 12px;"
+        " font-weight: 400;"
+        " color: %2;"
+        " background-color: %3;"
+        " padding: 6px 12px;"
+        " border-radius: 6px;"
+        " border: 1px solid %4;"
+        "}"
+    ).arg(FONT_SANS).arg(COLOR_OLIVE_GRAY.name())
+     .arg(COLOR_WARM_SAND.name()).arg(COLOR_BORDER_CREAM.name()));
     senderLayout->addWidget(m_localIpLabel);
 
-    // Device widget (scans for devices)
+    // Device widget
     m_deviceWidget = new DeviceWidget(m_discovery, this);
-    senderLayout->addWidget(m_deviceWidget);
+    senderLayout->addWidget(m_deviceWidget, 1);
 
     // File queue widget
     m_fileQueueWidget = new FileQueueWidget(this);
-    senderLayout->addWidget(m_fileQueueWidget);
+    senderLayout->addWidget(m_fileQueueWidget, 1);
 
-    // Send button
+    // Send button - Terracotta Brand CTA
     QPushButton *sendBtn = new QPushButton("发送文件");
+    sendBtn->setStyleSheet(QString(
+        "QPushButton {"
+        " background-color: %1;"
+        " color: %2;"
+        " border: none;"
+        " border-radius: 8px;"
+        " font-family: %3;"
+        " font-size: 14px;"
+        " font-weight: 500;"
+        " padding: 8px 20px;"
+        "}"
+        "QPushButton:hover { background-color: #b85a3a; }"
+        "QPushButton:pressed { background-color: #a34f32; }"
+    ).arg(COLOR_TERRACOTTA.name()).arg(COLOR_WHITE.name()).arg(FONT_SANS));
     senderLayout->addWidget(sendBtn);
 
-    // Progress widget at bottom
+    // Progress widget
     m_progressWidget = new ProgressWidget(this);
     senderLayout->addWidget(m_progressWidget);
 
@@ -64,41 +150,119 @@ MainWindow::MainWindow(QWidget *parent)
 
     // ========== Receiver Tab ==========
     QWidget *receiverWidget = new QWidget;
+    receiverWidget->setStyleSheet(QString(
+        "QWidget { background-color: %1; border-radius: 10px; }"
+    ).arg(COLOR_IVORY.name()));
     QVBoxLayout *receiverLayout = new QVBoxLayout(receiverWidget);
+    receiverLayout->setContentsMargins(16, 16, 16, 16);
+    receiverLayout->setSpacing(12);
 
     // Local IP label
-    QLabel *recvIpLabel = new QLabel(QString("本机IP: %1").arg(m_localIp));
+    QLabel *recvIpLabel = new QLabel(QString("本机 IP: %1").arg(m_localIp));
+    recvIpLabel->setStyleSheet(QString(
+        "QLabel {"
+        " font-family: %1;"
+        " font-size: 12px;"
+        " font-weight: 400;"
+        " color: %2;"
+        " background-color: %3;"
+        " padding: 6px 12px;"
+        " border-radius: 6px;"
+        " border: 1px solid %4;"
+        "}"
+    ).arg(FONT_SANS).arg(COLOR_OLIVE_GRAY.name())
+     .arg(COLOR_WARM_SAND.name()).arg(COLOR_BORDER_CREAM.name()));
     receiverLayout->addWidget(recvIpLabel);
 
-    // Status label
+    // Status label - Serif style headline
     QLabel *statusLabel = new QLabel("等待传输请求...");
     statusLabel->setObjectName("recvStatusLabel");
+    statusLabel->setStyleSheet(QString(
+        "QLabel {"
+        " font-family: %1;"
+        " font-size: 20px;"
+        " font-weight: 500;"
+        " color: %2;"
+        " line-height: 1.20;"
+        "}"
+    ).arg(FONT_SERIF).arg(COLOR_NEAR_BLACK.name()));
     receiverLayout->addWidget(statusLabel);
 
-    // Download directory display and change button
+    // Spacer
+    receiverLayout->addStretch();
+
+    // Download directory
     QLabel *dirLabel = new QLabel(QString("下载目录: %1").arg(downloadDir));
     dirLabel->setObjectName("recvDirLabel");
+    dirLabel->setStyleSheet(QString(
+        "QLabel {"
+        " font-family: %1;"
+        " font-size: 12px;"
+        " font-weight: 400;"
+        " color: %2;"
+        " line-height: 1.43;"
+        "}"
+    ).arg(FONT_SANS).arg(COLOR_STONE_GRAY.name()));
+    dirLabel->setWordWrap(true);
+
     QPushButton *changeBtn = new QPushButton("更改");
+    changeBtn->setStyleSheet(QString(
+        "QPushButton {"
+        " background-color: %1;"
+        " color: %2;"
+        " border: 1px solid %3;"
+        " border-radius: 6px;"
+        " font-family: %4;"
+        " font-size: 12px;"
+        " font-weight: 500;"
+        " padding: 6px 12px;"
+        "}"
+        "QPushButton:hover { background-color: %5; }"
+    ).arg(COLOR_WARM_SAND.name())
+     .arg(COLOR_CHARCOAL_WARM.name())
+     .arg(COLOR_BORDER_CREAM.name())
+     .arg(FONT_SANS)
+     .arg(COLOR_RING_WARM.name()));
 
     QHBoxLayout *dirLayout = new QHBoxLayout;
-    dirLayout->addWidget(dirLabel);
+    dirLayout->addWidget(dirLabel, 1);
     dirLayout->addWidget(changeBtn);
 
     receiverLayout->addLayout(dirLayout);
 
-    // Progress widget at bottom
+    // Progress widget
     ProgressWidget *recvProgressWidget = new ProgressWidget(this);
     recvProgressWidget->setObjectName("recvProgressWidget");
     receiverLayout->addWidget(recvProgressWidget);
 
     receiverWidget->setLayout(receiverLayout);
 
-    // ========== Final Setup ==========
+    // ========== Tab Styling ==========
     m_tabWidget->addTab(senderWidget, "发送");
     m_tabWidget->addTab(receiverWidget, "接收");
+    m_tabWidget->setStyleSheet(QString(
+        "QTabWidget { background-color: transparent; border: none; }"
+        "QTabWidget::pane { background-color: transparent; border: none; }"
+        "QTabBar { background-color: transparent; border: none; }"
+        "QTabBar::tab {"
+        " font-family: %1;"
+        " font-size: 14px;"
+        " font-weight: 400;"
+        " color: %2;"
+        " background-color: transparent;"
+        " padding: 8px 16px;"
+        " margin-right: 12px;"
+        " border: none;"
+        "}"
+        "QTabBar::tab:selected { color: %3; border-bottom: 2px solid %3; }"
+        "QTabBar::tab:hover:!selected { color: %4; }"
+    ).arg(FONT_SANS).arg(COLOR_STONE_GRAY.name())
+     .arg(COLOR_TERRACOTTA.name()).arg(COLOR_OLIVE_GRAY.name()));
 
-    setCentralWidget(m_tabWidget);
-    resize(600, 500);
+    centralLayout->addWidget(m_tabWidget);
+
+    setCentralWidget(centralWidget);
+    resize(640, 560);
 
     // Connect signals
     connect(sendBtn, &QPushButton::clicked, this, &MainWindow::onSendClicked);
@@ -168,8 +332,8 @@ void MainWindow::onChangeDownloadDir()
         // Update label
         QWidget *receiverWidget = m_tabWidget->widget(1);
         QLayout *layout = receiverWidget->layout();
-        if (QLayoutItem *item = layout->itemAt(2)) { // dirLayout is at index 2
-            if (QHBoxLayout *hLayout = item->layout()) {
+        if (QLayoutItem *item = layout->itemAt(2)) {
+            if (QHBoxLayout *hLayout = qobject_cast<QHBoxLayout *>(item->layout())) {
                 if (QLabel *label = hLayout->findChild<QLabel *>("recvDirLabel")) {
                     label->setText(QString("下载目录: %1").arg(newDir));
                 }

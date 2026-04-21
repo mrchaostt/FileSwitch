@@ -2,7 +2,7 @@
 #include <QDialog>
 #include <QListWidget>
 #include <QPushButton>
-#include "network/transfer.h"
+#include "../network/transfer.h"
 
 class AcceptDialog : public QDialog {
     Q_OBJECT

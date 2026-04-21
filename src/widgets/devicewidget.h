@@ -2,7 +2,7 @@
 #include <QWidget>
 #include <QListWidget>
 #include <QPushButton>
-#include "network/discovery.h"
+#include "../network/discovery.h"
 
 class DeviceWidget : public QWidget {
     Q_OBJECT

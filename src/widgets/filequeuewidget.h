@@ -2,7 +2,7 @@
 #include <QWidget>
 #include <QListWidget>
 #include <QPushButton>
-#include "network/transfer.h"
+#include "../network/transfer.h"
 
 class FileQueueWidget : public QWidget {
     Q_OBJECT

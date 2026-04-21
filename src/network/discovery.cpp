@@ -65,9 +65,16 @@ void Discovery::parseDeviceResponse(const QByteArray &data, const QHostAddress &
     QString type = obj["type"].toString();
 
     if (type == "announce" || type == "scan_response") {
+        QString senderIp = sender.toString();
+
+        // Filter out local device
+        if (!m_localIp.isEmpty() && senderIp == m_localIp) {
+            return;
+        }
+
         DeviceInfo info;
         info.hostname = obj["hostname"].toString();
-        info.ip = sender.toString();
+        info.ip = senderIp;
         info.port = obj["port"].toInt(45679);
 
         QMutexLocker locker(&m_mutex);

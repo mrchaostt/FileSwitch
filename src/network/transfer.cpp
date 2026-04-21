@@ -1,6 +1,7 @@
 #include "transfer.h"
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QFileInfo>
 #include <QDir>
 #include <QDataStream>
@@ -290,5 +291,5 @@ QString FileTransfer::getLocalIP() const {
             return addr.toString();
         }
     }
-    return QHostAddress::LocalHost.toString();
+    return QHostAddress(QHostAddress::LocalHost).toString();
 }

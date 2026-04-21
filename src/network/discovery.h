@@ -24,6 +24,7 @@ public:
     void startBroadcasting(const QString &hostname);
     void stopBroadcasting();
     void scanForDevices();
+    void setLocalIp(const QString &ip) { m_localIp = ip; }
 
     QList<DeviceInfo> getDevices() const;
 
@@ -42,6 +43,7 @@ private:
     QUdpSocket *m_broadcastSocket;
     QTimer *m_broadcastTimer;
     QString m_hostname;
+    QString m_localIp;
     QList<DeviceInfo> m_devices;
     mutable QMutex m_mutex;
 };

@@ -1,0 +1,5 @@
+/Users/wanlf/software/FileSwitch/build/CMakeFiles/FileSwitch.dir
+/Users/wanlf/software/FileSwitch/build/CMakeFiles/edit_cache.dir
+/Users/wanlf/software/FileSwitch/build/CMakeFiles/rebuild_cache.dir
+/Users/wanlf/software/FileSwitch/build/CMakeFiles/FileSwitch_autogen_timestamp_deps.dir
+/Users/wanlf/software/FileSwitch/build/CMakeFiles/FileSwitch_autogen.dir

@@ -20,3 +20,12 @@ qt_add_executable(FileSwitch
 )
 
 target_link_libraries(FileSwitch PRIVATE Qt6::Core Qt6::Network Qt6::Widgets Qt6::Gui)
+
+# Bundle Qt frameworks
+set(BUNDLE_ID "com.fileswitch.FileSwitch")
+set_target_properties(FileSwitch PROPERTIES
+    MACOSX_BUNDLE YES
+    MACOSX_BUNDLE_IDENTIFIER ${BUNDLE_ID}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    MACOSX_BUNDLE_LONG_VERSION_STRING "1.0.0"
+)
