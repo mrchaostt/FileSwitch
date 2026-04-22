@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt5 REQUIRED COMPONENTS Core Network Widgets Gui)
 
-qt_add_executable(FileSwitch
+add_executable(FileSwitch
     src/main.cpp
     src/mainwindow.cpp
     src/network/discovery.cpp
