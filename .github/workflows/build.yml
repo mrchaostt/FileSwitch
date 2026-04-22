@@ -19,7 +19,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: 6.5.0
+          version: 5.15.16
           arch: win64_mingw
 
       - name: Configure CMake
