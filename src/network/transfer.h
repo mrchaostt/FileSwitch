@@ -11,12 +11,14 @@ struct TransferFile {
     QString path;
     qint64 size;
 };
+Q_DECLARE_METATYPE(TransferFile)
 
 struct TransferRequest {
     QString senderIp;
     QString senderHostname;
     QList<TransferFile> files;
 };
+Q_DECLARE_METATYPE(TransferRequest)
 
 class FileTransfer : public QObject {
     Q_OBJECT
