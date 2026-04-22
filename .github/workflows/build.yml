@@ -30,8 +30,16 @@ jobs:
           cd build
           cmake --build . --config Release
 
+      - name: Deploy Qt and MinGW Runtime
+        run: |
+          cd build
+          windeployqt --no-translations FileSwitch.exe
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileSwitch-Windows
-          path: build/FileSwitch.exe
+          path: |
+            build/FileSwitch.exe
+            build/*.dll
+            build/qt.conf
