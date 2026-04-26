@@ -192,9 +192,8 @@ MainWindow::MainWindow(QWidget *parent)
     receiverLayout->addStretch();
 
     // Download directory
-    QLabel *dirLabel = new QLabel(QString("下载目录: %1").arg(downloadDir));
-    dirLabel->setObjectName("recvDirLabel");
-    dirLabel->setStyleSheet(QString(
+    m_recvDirLabel = new QLabel(QString("下载目录: %1").arg(downloadDir));
+    m_recvDirLabel->setStyleSheet(QString(
         "QLabel {"
         " font-family: %1;"
         " font-size: 12px;"
@@ -203,7 +202,7 @@ MainWindow::MainWindow(QWidget *parent)
         " line-height: 1.43;"
         "}"
     ).arg(FONT_SANS).arg(COLOR_STONE_GRAY.name()));
-    dirLabel->setWordWrap(true);
+    m_recvDirLabel->setWordWrap(true);
 
     QPushButton *changeBtn = new QPushButton("更改");
     changeBtn->setStyleSheet(QString(
@@ -225,7 +224,7 @@ MainWindow::MainWindow(QWidget *parent)
      .arg(COLOR_RING_WARM.name()));
 
     QHBoxLayout *dirLayout = new QHBoxLayout;
-    dirLayout->addWidget(dirLabel, 1);
+    dirLayout->addWidget(m_recvDirLabel, 1);
     dirLayout->addWidget(changeBtn);
 
     receiverLayout->addLayout(dirLayout);
@@ -330,17 +329,7 @@ void MainWindow::onChangeDownloadDir()
     if (!newDir.isEmpty()) {
         m_transfer->setDownloadDirectory(newDir);
         settings.setValue("downloadDir", newDir);
-
-        // Update label
-        QWidget *receiverWidget = m_tabWidget->widget(1);
-        QLayout *layout = receiverWidget->layout();
-        if (QLayoutItem *item = layout->itemAt(2)) {
-            if (QHBoxLayout *hLayout = qobject_cast<QHBoxLayout *>(item->layout())) {
-                if (QLabel *label = hLayout->findChild<QLabel *>("recvDirLabel")) {
-                    label->setText(QString("下载目录: %1").arg(newDir));
-                }
-            }
-        }
+        m_recvDirLabel->setText(QString("下载目录: %1").arg(newDir));
     }
 }
 

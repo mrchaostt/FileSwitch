@@ -32,5 +32,6 @@ private:
     FileQueueWidget *m_fileQueueWidget;
     ProgressWidget *m_progressWidget;
     QLabel *m_localIpLabel;
+    QLabel *m_recvDirLabel;
     QString m_localIp;
 };

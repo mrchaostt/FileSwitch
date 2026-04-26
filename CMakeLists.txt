@@ -4,6 +4,9 @@ project(FileSwitch LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Windows 7 compatibility
+add_definitions(-D_WIN32_WINNT=0x0601)
+
 find_package(Qt5 REQUIRED COMPONENTS Core Network Widgets Gui)
 
 # Enable automoc for MOC processing
