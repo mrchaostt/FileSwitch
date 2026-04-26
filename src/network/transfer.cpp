@@ -320,7 +320,9 @@ void FileTransfer::openNextSendFile() {
 }
 
 void FileTransfer::onBytesWritten(qint64 bytes) {
-    m_currentFileOffset += bytes;
+    Q_UNUSED(bytes);
+    // Don't increment offset here - sendFileData already tracks what it writes
+    // This callback just triggers the next chunk to be sent
 
     // Continue sending current file
     sendFileData();
