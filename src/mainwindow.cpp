@@ -270,6 +270,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_transfer, &FileTransfer::transferCompleted, this, &MainWindow::onTransferCompleted);
     connect(m_transfer, &FileTransfer::transferError, this, &MainWindow::onTransferError);
     connect(m_transfer, &FileTransfer::transferRequestReceived, this, &MainWindow::onTransferRequestReceived);
+    connect(m_transfer, &FileTransfer::transferRejected, this, [this]() {
+        m_progressWidget->setStatus("接收被拒绝");
+    });
 }
 
 void MainWindow::onSendClicked()

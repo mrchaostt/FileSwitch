@@ -126,7 +126,6 @@ void DeviceWidget::onDeviceDoubleClicked(QListWidgetItem *item)
 void DeviceWidget::onDeviceFound(const DeviceInfo &info)
 {
     // Check if device already exists (deduplicate by IP)
-    QList<QListWidgetItem *> items = m_deviceList->findItems("*", Qt::MatchWildcard);
     for (int i = 0; i < m_deviceList->count(); ++i) {
         QListWidgetItem *item = m_deviceList->item(i);
         if (item->data(Qt::UserRole).toString() == info.ip) {

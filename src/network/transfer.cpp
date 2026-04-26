@@ -73,7 +73,7 @@ void FileTransfer::rejectTransfer() {
         m_receiveSocket->disconnectFromHost();
     }
     resetReceiveState();
-    emit transferError("Transfer rejected by user");
+    emit transferRejected();
 }
 
 void FileTransfer::resetReceiveState() {
@@ -146,7 +146,7 @@ void FileTransfer::readIncomingData() {
 
             // Read 4-byte header size (big-endian)
             QDataStream stream(m_receiveSocket);
-            stream.setVersion(QDataStream::Qt_5_15);
+            stream.setVersion(QDataStream::Qt_5_0);
             quint32 headerSize;
             stream >> headerSize;
 
@@ -279,7 +279,7 @@ void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> 
         // Send 4-byte big-endian header size + header JSON
         QByteArray header;
         QDataStream stream(&header, QIODevice::WriteOnly);
-        stream.setVersion(QDataStream::Qt_5_15);
+        stream.setVersion(QDataStream::Qt_5_0);
         stream << static_cast<quint32>(headerData.size());
         header.append(headerData);
 
@@ -289,6 +289,7 @@ void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> 
         // Start sending first file
         m_currentFileIndex = 0;
         openNextSendFile();
+        sendFileData();  // Explicitly trigger first chunk send
     });
 
     connect(m_sendSocket, &QTcpSocket::bytesWritten, this, &FileTransfer::onBytesWritten);

@@ -43,14 +43,19 @@ signals:
     void transferProgress(qint64 bytes, qint64 total);
     void transferCompleted();
     void transferError(const QString &error);
+    void transferRejected();
 
 private slots:
     void acceptConnection();
     void readIncomingData();
-    void bytesWritten(qint64 bytes);
+    void onBytesWritten(qint64 bytes);
 
 private:
-    void sendNextChunk();
+    void sendFileData();
+    void openNextSendFile();
+    void cleanupSendState();
+    void resetReceiveState();
+    void openNextReceiveFile();
     void handleTransferRequest(const QJsonObject &obj);
     QString getLocalIP() const;
 

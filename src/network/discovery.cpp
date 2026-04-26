@@ -1,7 +1,6 @@
 #include "discovery.h"
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkDatagram>
 
 Discovery::Discovery(QObject *parent)
     : QObject(parent)
@@ -52,8 +51,14 @@ void Discovery::sendBroadcast() {
 
 void Discovery::readPendingDatagrams() {
     while (m_socket->hasPendingDatagrams()) {
-        QNetworkDatagram datagram = m_socket->receiveDatagram();
-        parseDeviceResponse(datagram.data(), datagram.senderAddress());
+        QByteArray data = m_socket->readDatagram(nullptr, nullptr);
+        QHostAddress sender;
+        quint16 port = 0;
+        // Get sender info - use pendingDatagramSize for data
+        qint64 size = m_socket->pendingDatagramSize();
+        data.resize(size);
+        m_socket->readDatagram(data.data(), size, &sender, &port);
+        parseDeviceResponse(data, sender);
     }
 }
 
