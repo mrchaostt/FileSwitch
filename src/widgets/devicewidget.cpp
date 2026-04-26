@@ -125,6 +125,19 @@ void DeviceWidget::onDeviceDoubleClicked(QListWidgetItem *item)
 
 void DeviceWidget::onDeviceFound(const DeviceInfo &info)
 {
+    // Check if device already exists (deduplicate by IP)
+    QList<QListWidgetItem *> items = m_deviceList->findItems("*", Qt::MatchWildcard);
+    for (int i = 0; i < m_deviceList->count(); ++i) {
+        QListWidgetItem *item = m_deviceList->item(i);
+        if (item->data(Qt::UserRole).toString() == info.ip) {
+            // Update existing device
+            QString displayText = QString("%1  •  %2").arg(info.hostname, info.ip);
+            item->setText(displayText);
+            return;
+        }
+    }
+
+    // New device - add to list
     QString displayText = QString("%1  •  %2").arg(info.hostname, info.ip);
     QListWidgetItem *item = new QListWidgetItem(displayText, m_deviceList);
     item->setData(Qt::UserRole, info.ip);
