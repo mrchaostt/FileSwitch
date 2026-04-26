@@ -26,6 +26,9 @@ FileTransfer::FileTransfer(QObject *parent)
     , m_receiveOffset(0)
     , m_receivingHeader(true)
     , m_pendingRequest()
+    , m_currentReceiveFileIndex(0)
+    , m_currentReceiveFileActualSize(0)
+    , m_transferAccepted(false)
 {
     connect(m_server, &QTcpServer::newConnection, this, &FileTransfer::acceptConnection);
 }
@@ -45,24 +48,91 @@ void FileTransfer::stopListening() {
         m_sendSocket->deleteLater();
         m_sendSocket = nullptr;
     }
+    if (m_receiveSocket) {
+        m_receiveSocket->disconnect();
+        m_receiveSocket->deleteLater();
+        m_receiveSocket = nullptr;
+    }
+}
+
+void FileTransfer::acceptTransfer() {
+    m_transferAccepted = true;
+    if (!m_pendingRequest.files.isEmpty() && m_currentReceiveFileIndex < m_pendingRequest.files.size()) {
+        openNextReceiveFile();
+    }
+}
+
+void FileTransfer::rejectTransfer() {
+    m_transferAccepted = false;
+    if (m_receiveFile) {
+        m_receiveFile->close();
+        delete m_receiveFile;
+        m_receiveFile = nullptr;
+    }
+    if (m_receiveSocket) {
+        m_receiveSocket->disconnectFromHost();
+    }
+    resetReceiveState();
+    emit transferError("Transfer rejected by user");
+}
+
+void FileTransfer::resetReceiveState() {
+    m_receivingHeader = true;
+    m_receiveOffset = 0;
+    m_receiveFilesize = 0;
+    m_receiveFilename.clear();
+    m_currentReceiveFileIndex = 0;
+    m_currentReceiveFileActualSize = 0;
+    m_totalBytes = 0;
+    m_pendingRequest = TransferRequest();
+    m_transferAccepted = false;
+}
+
+void FileTransfer::openNextReceiveFile() {
+    if (!m_transferAccepted) return;
+    if (m_currentReceiveFileIndex >= m_pendingRequest.files.size()) return;
+
+    if (m_receiveFile) {
+        m_receiveFile->close();
+        delete m_receiveFile;
+        m_receiveFile = nullptr;
+    }
+
+    const TransferFile &file = m_pendingRequest.files.at(m_currentReceiveFileIndex);
+    m_receiveFilename = file.name;
+    m_receiveFilesize = file.size;
+    m_receiveOffset = 0;
+    m_currentReceiveFileActualSize = 0;
+
+    m_receiveFile = new QFile(m_downloadDir + "/" + m_receiveFilename);
+    if (!m_receiveFile->open(QFile::WriteOnly)) {
+        emit transferError("Cannot open file for writing: " + m_receiveFilename);
+        delete m_receiveFile;
+        m_receiveFile = nullptr;
+        return;
+    }
 }
 
 void FileTransfer::acceptConnection() {
+    // Clean up any existing connection
+    if (m_receiveSocket) {
+        m_receiveSocket->disconnect();
+        m_receiveSocket->deleteLater();
+    }
+
     QTcpSocket *socket = m_server->nextPendingConnection();
     if (!socket) return;
 
     m_receiveSocket = socket;
-    m_receivingHeader = true;
-    m_receiveOffset = 0;
-    m_receiveFilesize = 0;
+    resetReceiveState();
 
     connect(m_receiveSocket, &QTcpSocket::readyRead, this, &FileTransfer::readIncomingData);
     connect(m_receiveSocket, &QTcpSocket::disconnected, this, [this]() {
-        if (m_receiveFile) {
-            m_receiveFile->close();
-            delete m_receiveFile;
-            m_receiveFile = nullptr;
-        }
+        resetReceiveState();
+    });
+    connect(m_receiveSocket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        emit transferError(m_receiveSocket->errorString());
+        resetReceiveState();
     });
 }
 
@@ -94,27 +164,45 @@ void FileTransfer::readIncomingData() {
             QJsonObject obj = doc.object();
             handleTransferRequest(obj);
             m_receivingHeader = false;
+
+            // Don't proceed to file reading until user accepts
+            if (!m_transferAccepted) {
+                return;
+            }
         }
 
-        // Receive file data
-        if (m_receiveFile && m_receiveSocket->bytesAvailable() > 0) {
+        // Receive file data - only if accepted
+        if (m_transferAccepted && m_receiveFile && m_receiveSocket->bytesAvailable() > 0) {
             QByteArray data = m_receiveSocket->readAll();
             m_receiveFile->write(data);
             m_receiveOffset += data.size();
+            m_currentReceiveFileActualSize += data.size();
 
-            emit transferProgress(m_receiveOffset, m_receiveFilesize);
+            // Calculate total progress across all files
+            qint64 totalProgress = 0;
+            for (int i = 0; i < m_currentReceiveFileIndex; ++i) {
+                totalProgress += m_pendingRequest.files.at(i).size;
+            }
+            totalProgress += m_receiveOffset;
+
+            emit transferProgress(totalProgress, m_totalBytes);
 
             // Check if current file is complete
             if (m_receiveOffset >= m_receiveFilesize) {
                 m_receiveFile->close();
                 delete m_receiveFile;
                 m_receiveFile = nullptr;
+                m_currentReceiveFileIndex++;
 
-                // Check if entire transfer is complete
-                if (m_receiveOffset >= m_totalBytes) {
-                    emit transferCompleted();
-                    m_totalBytes = 0;
+                // Check if more files to receive
+                if (m_currentReceiveFileIndex < m_pendingRequest.files.size()) {
+                    // Open next file
+                    openNextReceiveFile();
                     m_receiveOffset = 0;
+                } else {
+                    // All files complete
+                    emit transferCompleted();
+                    resetReceiveState();
                 }
             }
         }
@@ -136,29 +224,24 @@ void FileTransfer::handleTransferRequest(const QJsonObject &obj) {
     }
 
     m_pendingRequest = request;
-    emit transferRequestReceived(request);
+
+    // Calculate total bytes
+    m_totalBytes = 0;
+    for (const TransferFile &f : request.files) {
+        m_totalBytes += f.size;
+    }
 
     // Create download directory if needed
     QDir dir;
     dir.mkpath(m_downloadDir);
 
-    // Set up first file
-    if (!request.files.isEmpty()) {
-        m_receiveFilename = request.files.first().name;
-        m_receiveFilesize = request.files.first().size;
-        m_totalBytes = 0;
-        for (const TransferFile &f : request.files) {
-            m_totalBytes += f.size;
-        }
-        m_receiveOffset = 0;
+    // Reset transfer state but wait for user acceptance
+    m_currentReceiveFileIndex = 0;
+    m_receiveOffset = 0;
+    m_receivingHeader = false;
+    m_transferAccepted = false;
 
-        m_receiveFile = new QFile(m_downloadDir + "/" + m_receiveFilename);
-        if (!m_receiveFile->open(QFile::WriteOnly)) {
-            emit transferError("Cannot open file for writing: " + m_receiveFilename);
-            delete m_receiveFile;
-            m_receiveFile = nullptr;
-        }
-    }
+    emit transferRequestReceived(request);
 }
 
 void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> &files) {
@@ -175,7 +258,7 @@ void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> 
         m_totalBytes += f.size;
     }
 
-    connect(m_sendSocket, &QTcpSocket::connected, this, [this]() {
+    connect(m_sendSocket, &QTcpSocket::connected, this, [this, targetIp]() {
         // Build header JSON
         QJsonObject obj;
         obj["type"] = "transfer_request";
@@ -203,75 +286,101 @@ void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> 
         m_sendSocket->write(header);
         m_sendSocket->flush();
 
-        // Open first file and start sending
-        m_currentSendFile = new QFile(m_sendQueue.first().path);
-        if (m_currentSendFile->open(QFile::ReadOnly)) {
-            sendNextChunk();
-        } else {
-            emit transferError("Cannot open file for reading: " + m_sendQueue.first().path);
-            delete m_currentSendFile;
-            m_currentSendFile = nullptr;
-        }
+        // Start sending first file
+        m_currentFileIndex = 0;
+        openNextSendFile();
     });
 
-    connect(m_sendSocket, &QTcpSocket::bytesWritten, this, &FileTransfer::bytesWritten);
+    connect(m_sendSocket, &QTcpSocket::bytesWritten, this, &FileTransfer::onBytesWritten);
     connect(m_sendSocket, &QTcpSocket::disconnected, this, [this]() {
-        if (m_currentSendFile) {
-            m_currentSendFile->close();
-            delete m_currentSendFile;
-            m_currentSendFile = nullptr;
-        }
-        if (m_sendSocket) {
-            m_sendSocket->deleteLater();
-            m_sendSocket = nullptr;
-        }
+        cleanupSendState();
     });
 
     m_sendSocket->connectToHost(targetIp, TRANSFER_PORT);
 }
 
-void FileTransfer::sendNextChunk() {
-    if (!m_sendSocket || m_currentFileIndex >= m_sendQueue.size()) return;
+void FileTransfer::openNextSendFile() {
+    if (m_currentFileIndex >= m_sendQueue.size()) return;
 
-    const TransferFile &file = m_sendQueue.at(m_currentFileIndex);
-
-    if (m_currentFileOffset == 0) {
-        m_currentSendFile = new QFile(file.path);
-        if (!m_currentSendFile->open(QFile::ReadOnly)) {
-            emit transferError("Cannot open file for reading: " + file.path);
-            delete m_currentSendFile;
-            m_currentSendFile = nullptr;
-            return;
-        }
-    }
-
-    if (!m_currentSendFile) return;
-
-    QByteArray chunk = m_currentSendFile->read(CHUNK_SIZE);
-    if (chunk.isEmpty()) {
+    if (m_currentSendFile) {
         m_currentSendFile->close();
         delete m_currentSendFile;
         m_currentSendFile = nullptr;
-        m_currentFileIndex++;
-        m_currentFileOffset = 0;
-        sendNextChunk();
+    }
+
+    const TransferFile &file = m_sendQueue.at(m_currentFileIndex);
+    m_currentSendFile = new QFile(file.path);
+    if (!m_currentSendFile->open(QFile::ReadOnly)) {
+        emit transferError("Cannot open file for reading: " + file.path);
+        delete m_currentSendFile;
+        m_currentSendFile = nullptr;
         return;
     }
-
-    m_sendSocket->write(chunk);
-    m_currentFileOffset += chunk.size();
+    m_currentFileOffset = 0;
 }
 
-void FileTransfer::bytesWritten(qint64 bytes) {
-    Q_UNUSED(bytes);
-    m_sentBytes += bytes;
-    emit transferProgress(m_sentBytes, m_totalBytes);
+void FileTransfer::onBytesWritten(qint64 bytes) {
+    m_currentFileOffset += bytes;
 
-    if (m_currentFileIndex < m_sendQueue.size()) {
-        sendNextChunk();
-    } else {
-        emit transferCompleted();
+    // Continue sending current file
+    sendFileData();
+}
+
+void FileTransfer::sendFileData() {
+    if (!m_sendSocket || m_sendSocket->state() != QAbstractSocket::ConnectedState) return;
+
+    // Check if we need to open next file
+    if (!m_currentSendFile || m_currentSendFile->atEnd()) {
+        if (m_currentSendFile) {
+            m_currentSendFile->close();
+            delete m_currentSendFile;
+            m_currentSendFile = nullptr;
+        }
+
+        m_currentFileIndex++;
+        m_currentFileOffset = 0;
+
+        if (m_currentFileIndex >= m_sendQueue.size()) {
+            // All files sent
+            emit transferCompleted();
+            cleanupSendState();
+            return;
+        }
+
+        openNextSendFile();
     }
+
+    // Send chunk
+    if (m_currentSendFile && !m_currentSendFile->atEnd()) {
+        QByteArray chunk = m_currentSendFile->read(CHUNK_SIZE);
+        if (!chunk.isEmpty()) {
+            qint64 written = m_sendSocket->write(chunk);
+            m_currentFileOffset += written;
+
+            // Progress only counts actual file data, not header
+            qint64 fileDataSent = 0;
+            for (int i = 0; i < m_currentFileIndex; ++i) {
+                fileDataSent += m_sendQueue.at(i).size;
+            }
+            fileDataSent += m_currentFileOffset;
+
+            emit transferProgress(fileDataSent, m_totalBytes);
+        }
+    }
+}
+
+void FileTransfer::cleanupSendState() {
+    if (m_currentSendFile) {
+        m_currentSendFile->close();
+        delete m_currentSendFile;
+        m_currentSendFile = nullptr;
+    }
+    if (m_sendSocket) {
+        m_sendSocket->deleteLater();
+        m_sendSocket = nullptr;
+    }
+    m_currentFileIndex = 0;
+    m_sendQueue.clear();
 }
 
 QString FileTransfer::downloadDirectory() const {

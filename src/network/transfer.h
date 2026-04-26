@@ -35,6 +35,8 @@ public:
 
     QString downloadDirectory() const;
     void setDownloadDirectory(const QString &dir);
+    void acceptTransfer();
+    void rejectTransfer();
 
 signals:
     void transferRequestReceived(const TransferRequest &request);
@@ -71,4 +73,7 @@ private:
     qint64 m_receiveOffset;
     bool m_receivingHeader;
     TransferRequest m_pendingRequest;
+    int m_currentReceiveFileIndex;
+    qint64 m_currentReceiveFileActualSize;
+    bool m_transferAccepted;
 };

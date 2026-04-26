@@ -313,8 +313,10 @@ void MainWindow::onTransferRequestReceived(const TransferRequest &request)
 {
     AcceptDialog dialog(request, m_transfer->downloadDirectory(), this);
     if (dialog.exec() == QDialog::Accepted) {
+        m_transfer->acceptTransfer();
         m_progressWidget->setStatus("正在接收...");
     } else {
+        m_transfer->rejectTransfer();
         m_progressWidget->setStatus("接收被拒绝");
     }
 }
