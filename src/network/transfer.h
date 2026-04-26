@@ -62,6 +62,8 @@ private:
     QTcpServer *m_server;
     QTcpSocket *m_sendSocket;
     QFile *m_currentSendFile;
+    QByteArray m_pendingChunk;
+    qint64 m_pendingOffset;
     QList<TransferFile> m_sendQueue;
     int m_currentFileIndex;
     qint64 m_currentFileOffset;

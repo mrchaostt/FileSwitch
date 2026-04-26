@@ -13,6 +13,8 @@ FileTransfer::FileTransfer(QObject *parent)
     , m_server(new QTcpServer(this))
     , m_sendSocket(nullptr)
     , m_currentSendFile(nullptr)
+    , m_pendingChunk()
+    , m_pendingOffset(0)
     , m_sendQueue()
     , m_currentFileIndex(0)
     , m_currentFileOffset(0)
@@ -173,36 +175,53 @@ void FileTransfer::readIncomingData() {
 
         // Receive file data - only if accepted
         if (m_transferAccepted && m_receiveFile && m_receiveSocket->bytesAvailable() > 0) {
-            QByteArray data = m_receiveSocket->readAll();
-            m_receiveFile->write(data);
-            m_receiveOffset += data.size();
-            m_currentReceiveFileActualSize += data.size();
-
-            // Calculate total progress across all files
-            qint64 totalProgress = 0;
-            for (int i = 0; i < m_currentReceiveFileIndex; ++i) {
-                totalProgress += m_pendingRequest.files.at(i).size;
-            }
-            totalProgress += m_receiveOffset;
-
-            emit transferProgress(totalProgress, m_totalBytes);
-
-            // Check if current file is complete
-            if (m_receiveOffset >= m_receiveFilesize) {
+            // If current file is already complete, rotate to next file first.
+            qint64 remaining = m_receiveFilesize - m_receiveOffset;
+            if (remaining <= 0) {
                 m_receiveFile->close();
                 delete m_receiveFile;
                 m_receiveFile = nullptr;
                 m_currentReceiveFileIndex++;
 
-                // Check if more files to receive
                 if (m_currentReceiveFileIndex < m_pendingRequest.files.size()) {
-                    // Open next file
                     openNextReceiveFile();
-                    m_receiveOffset = 0;
                 } else {
-                    // All files complete
                     emit transferCompleted();
                     resetReceiveState();
+                }
+                continue;
+            }
+
+            qint64 toRead = qMin(m_receiveSocket->bytesAvailable(), remaining);
+            QByteArray data = m_receiveSocket->read(toRead);
+            if (!data.isEmpty()) {
+                m_receiveFile->write(data);
+                m_receiveOffset += data.size();
+                m_currentReceiveFileActualSize += data.size();
+
+                // Calculate total progress across all files
+                qint64 totalProgress = 0;
+                for (int i = 0; i < m_currentReceiveFileIndex; ++i) {
+                    totalProgress += m_pendingRequest.files.at(i).size;
+                }
+                totalProgress += m_receiveOffset;
+                emit transferProgress(totalProgress, m_totalBytes);
+
+                // Check if current file is complete
+                if (m_receiveOffset >= m_receiveFilesize) {
+                    m_receiveFile->close();
+                    delete m_receiveFile;
+                    m_receiveFile = nullptr;
+                    m_currentReceiveFileIndex++;
+
+                    // Check if more files to receive
+                    if (m_currentReceiveFileIndex < m_pendingRequest.files.size()) {
+                        openNextReceiveFile();
+                        m_receiveOffset = 0;
+                    } else {
+                        emit transferCompleted();
+                        resetReceiveState();
+                    }
                 }
             }
         }
@@ -332,8 +351,28 @@ void FileTransfer::onBytesWritten(qint64 bytes) {
 void FileTransfer::sendFileData() {
     if (!m_sendSocket || m_sendSocket->state() != QAbstractSocket::ConnectedState) return;
 
+    // If we have pending data from a partial write, try to send it first
+    if (!m_pendingChunk.isEmpty()) {
+        qint64 written = m_sendSocket->write(m_pendingChunk.constData() + m_pendingOffset, m_pendingChunk.size() - m_pendingOffset);
+        if (written > 0) {
+            m_pendingOffset += written;
+            m_currentFileOffset += written;
+            if (m_pendingOffset >= m_pendingChunk.size()) {
+                // Pending chunk fully sent
+                m_pendingChunk.clear();
+                m_pendingOffset = 0;
+            }
+        } else if (written < 0) {
+            // Write failed
+            emit transferError("Socket write error");
+            cleanupSendState();
+            return;
+        }
+        // Continue to check if we can send more
+    }
+
     // Check if we need to open next file
-    if (!m_currentSendFile || m_currentSendFile->atEnd()) {
+    if (m_pendingChunk.isEmpty() && (!m_currentSendFile || m_currentSendFile->atEnd())) {
         if (m_currentSendFile) {
             m_currentSendFile->close();
             delete m_currentSendFile;
@@ -353,21 +392,31 @@ void FileTransfer::sendFileData() {
         openNextSendFile();
     }
 
-    // Send chunk
-    if (m_currentSendFile && !m_currentSendFile->atEnd()) {
+    // Send chunk - only if no pending data
+    if (m_pendingChunk.isEmpty() && m_currentSendFile && !m_currentSendFile->atEnd()) {
         QByteArray chunk = m_currentSendFile->read(CHUNK_SIZE);
         if (!chunk.isEmpty()) {
             qint64 written = m_sendSocket->write(chunk);
-            m_currentFileOffset += written;
+            if (written > 0) {
+                if (written < chunk.size()) {
+                    // Partial write - save remaining data
+                    m_pendingChunk = chunk;
+                    m_pendingOffset = written;
+                }
+                m_currentFileOffset += written;
 
-            // Progress only counts actual file data, not header
-            qint64 fileDataSent = 0;
-            for (int i = 0; i < m_currentFileIndex; ++i) {
-                fileDataSent += m_sendQueue.at(i).size;
+                // Progress only counts actual file data, not header
+                qint64 fileDataSent = 0;
+                for (int i = 0; i < m_currentFileIndex; ++i) {
+                    fileDataSent += m_sendQueue.at(i).size;
+                }
+                fileDataSent += m_currentFileOffset;
+
+                emit transferProgress(fileDataSent, m_totalBytes);
+            } else if (written < 0) {
+                emit transferError("Socket write error");
+                cleanupSendState();
             }
-            fileDataSent += m_currentFileOffset;
-
-            emit transferProgress(fileDataSent, m_totalBytes);
         }
     }
 }
@@ -382,6 +431,8 @@ void FileTransfer::cleanupSendState() {
         m_sendSocket->deleteLater();
         m_sendSocket = nullptr;
     }
+    m_pendingChunk.clear();
+    m_pendingOffset = 0;
     m_currentFileIndex = 0;
     m_sendQueue.clear();
 }

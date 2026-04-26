@@ -4,11 +4,6 @@ project(FileSwitch LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Windows 7 compatibility
-if(WIN32)
-    target_compile_definitions(FileSwitch PRIVATE _WIN32_WINNT=0x0601)
-endif()
-
 find_package(Qt5 REQUIRED COMPONENTS Core Network Widgets Gui)
 
 # Enable automoc for MOC processing
@@ -37,3 +32,8 @@ set_target_properties(FileSwitch PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
     MACOSX_BUNDLE_LONG_VERSION_STRING "1.0.0"
 )
+
+# Windows 7 compatibility - must be after add_executable
+if(WIN32)
+    target_compile_definitions(FileSwitch PRIVATE _WIN32_WINNT=0x0601)
+endif()
