@@ -13,6 +13,7 @@
 #include <QAbstractSocket>
 #include <QTabWidget>
 #include <QListWidget>
+#include <QDebug>
 #include "widgets/acceptdialog.h"
 
 // Claude Design System Constants
@@ -35,6 +36,8 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    qInfo() << "MainWindow initialization started";
+
     setWindowTitle("FileSwitch");
     setMinimumSize(480, 400);
     setStyleSheet(QString("QMainWindow { background-color: %1; }").arg(COLOR_PARCHMENT.name()));
@@ -43,16 +46,19 @@ MainWindow::MainWindow(QWidget *parent)
     m_discovery = new Discovery(this);
     m_transfer = new FileTransfer(this);
     m_localIp = getLocalIP();
+    qInfo() << "Local IP detected:" << (m_localIp.isEmpty() ? QStringLiteral("<none>") : m_localIp);
 
     // Load settings
     QSettings settings;
     QString downloadDir = settings.value("downloadDir", QDir::home().filePath("Downloads/FileSwitch")).toString();
     m_transfer->setDownloadDirectory(downloadDir);
+    qInfo() << "Download directory:" << downloadDir;
 
     // Set local IP for filtering (exclude self from device list)
     m_discovery->setLocalIp(m_localIp);
 
     // Start services
+    qInfo() << "Starting discovery broadcast and transfer listener";
     m_discovery->startBroadcasting("FileSwitch");
     m_transfer->startListening();
 
@@ -271,8 +277,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_transfer, &FileTransfer::transferError, this, &MainWindow::onTransferError);
     connect(m_transfer, &FileTransfer::transferRequestReceived, this, &MainWindow::onTransferRequestReceived);
     connect(m_transfer, &FileTransfer::transferRejected, this, [this]() {
+        qInfo() << "Transfer rejected by receiver";
         m_progressWidget->setStatus("接收被拒绝");
     });
+
+    qInfo() << "MainWindow initialization finished";
 }
 
 void MainWindow::onSendClicked()
@@ -281,15 +290,18 @@ void MainWindow::onSendClicked()
     QList<TransferFile> files = m_fileQueueWidget->getFiles();
 
     if (ip.isEmpty()) {
+        qWarning() << "Send requested without selected device";
         QMessageBox::warning(this, "警告", "请选择一个设备");
         return;
     }
 
     if (files.isEmpty()) {
+        qWarning() << "Send requested without files";
         QMessageBox::warning(this, "警告", "请添加要发送的文件");
         return;
     }
 
+    qInfo() << "Starting file transfer to" << ip << "file count" << files.size();
     m_progressWidget->setStatus("正在连接...");
     m_transfer->sendFiles(ip, files);
 }
@@ -301,23 +313,28 @@ void MainWindow::onTransferProgress(qint64 bytes, qint64 total)
 
 void MainWindow::onTransferCompleted()
 {
+    qInfo() << "Transfer completed";
     m_progressWidget->setStatus("传输完成");
     QMessageBox::information(this, "传输完成", "文件传输已完成");
 }
 
 void MainWindow::onTransferError(const QString &error)
 {
+    qWarning() << "Transfer error:" << error;
     m_progressWidget->setStatus("传输错误");
     QMessageBox::critical(this, "传输错误", error);
 }
 
 void MainWindow::onTransferRequestReceived(const TransferRequest &request)
 {
+    qInfo() << "Transfer request received from" << request.senderIp << "file count" << request.files.size();
     AcceptDialog dialog(request, m_transfer->downloadDirectory(), this);
     if (dialog.exec() == QDialog::Accepted) {
+        qInfo() << "Transfer request accepted";
         m_transfer->acceptTransfer();
         m_progressWidget->setStatus("正在接收...");
     } else {
+        qInfo() << "Transfer request rejected";
         m_transfer->rejectTransfer();
         m_progressWidget->setStatus("接收被拒绝");
     }
@@ -333,6 +350,7 @@ void MainWindow::onChangeDownloadDir()
         m_transfer->setDownloadDirectory(newDir);
         settings.setValue("downloadDir", newDir);
         m_recvDirLabel->setText(QString("下载目录: %1").arg(newDir));
+        qInfo() << "Download directory changed:" << newDir;
     }
 }
 

@@ -4,7 +4,8 @@ project(FileSwitch LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Core Network Widgets Gui)
+find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core Network Widgets Gui)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Network Widgets Gui)
 
 # Enable automoc for MOC processing
 set(CMAKE_AUTOMOC ON)
@@ -13,6 +14,7 @@ set(CMAKE_AUTOUIC ON)
 
 add_executable(FileSwitch
     src/main.cpp
+    src/startuplogger.cpp
     src/mainwindow.cpp
     src/network/discovery.cpp
     src/network/transfer.cpp
@@ -22,7 +24,12 @@ add_executable(FileSwitch
     src/widgets/acceptdialog.cpp
 )
 
-target_link_libraries(FileSwitch PRIVATE Qt5::Core Qt5::Network Qt5::Widgets Qt5::Gui)
+target_link_libraries(FileSwitch PRIVATE
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Network
+    Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Gui
+)
 
 # Bundle Qt frameworks
 set(BUNDLE_ID "com.fileswitch.FileSwitch")

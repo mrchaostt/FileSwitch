@@ -1,4 +1,5 @@
 #include "discovery.h"
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 
@@ -8,7 +9,13 @@ Discovery::Discovery(QObject *parent)
     , m_broadcastSocket(new QUdpSocket(this))
     , m_broadcastTimer(new QTimer(this))
 {
-    m_socket->bind(QHostAddress::AnyIPv4, DISCOVERY_PORT, QUdpSocket::ShareAddress);
+    const bool bound = m_socket->bind(QHostAddress::AnyIPv4, DISCOVERY_PORT, QUdpSocket::ShareAddress);
+    if (bound) {
+        qInfo() << "Discovery UDP socket bound on port" << DISCOVERY_PORT;
+    } else {
+        qWarning() << "Discovery UDP bind failed on port" << DISCOVERY_PORT << ":" << m_socket->errorString();
+    }
+
     connect(m_socket, &QUdpSocket::readyRead, this, &Discovery::readPendingDatagrams);
     connect(m_broadcastTimer, &QTimer::timeout, this, &Discovery::sendBroadcast);
 }
@@ -19,11 +26,13 @@ Discovery::~Discovery() {
 
 void Discovery::startBroadcasting(const QString &hostname) {
     m_hostname = hostname;
+    qInfo() << "Discovery broadcasting started for host" << hostname;
     m_broadcastTimer->start(5000);
     sendBroadcast();
 }
 
 void Discovery::stopBroadcasting() {
+    qInfo() << "Discovery broadcasting stopped";
     m_broadcastTimer->stop();
     if (m_socket) {
         m_socket->close();
@@ -37,7 +46,12 @@ void Discovery::scanForDevices() {
     QJsonObject obj;
     obj["type"] = "scan";
     QByteArray data = QJsonDocument(obj).toJson();
-    m_socket->writeDatagram(data, QHostAddress::Broadcast, DISCOVERY_PORT);
+    const qint64 written = m_socket->writeDatagram(data, QHostAddress::Broadcast, DISCOVERY_PORT);
+    if (written < 0) {
+        qWarning() << "Discovery scan datagram failed:" << m_socket->errorString();
+    } else {
+        qDebug() << "Discovery scan datagram sent, bytes" << written;
+    }
 }
 
 void Discovery::sendBroadcast() {
@@ -46,7 +60,12 @@ void Discovery::sendBroadcast() {
     obj["hostname"] = m_hostname;
     obj["port"] = 45679;
     QByteArray data = QJsonDocument(obj).toJson();
-    m_broadcastSocket->writeDatagram(data, QHostAddress::Broadcast, DISCOVERY_PORT);
+    const qint64 written = m_broadcastSocket->writeDatagram(data, QHostAddress::Broadcast, DISCOVERY_PORT);
+    if (written < 0) {
+        qWarning() << "Discovery announce datagram failed:" << m_broadcastSocket->errorString();
+    } else {
+        qDebug() << "Discovery announce datagram sent, bytes" << written;
+    }
 }
 
 void Discovery::readPendingDatagrams() {
@@ -65,7 +84,10 @@ void Discovery::readPendingDatagrams() {
 
 void Discovery::parseDeviceResponse(const QByteArray &data, const QHostAddress &sender) {
     QJsonDocument doc = QJsonDocument::fromJson(data);
-    if (!doc.isObject()) return;
+    if (!doc.isObject()) {
+        qWarning() << "Discovery ignored invalid JSON from" << sender.toString();
+        return;
+    }
 
     QJsonObject obj = doc.object();
     QString type = obj["type"].toString();
@@ -95,6 +117,7 @@ void Discovery::parseDeviceResponse(const QByteArray &data, const QHostAddress &
         }
         if (!found) {
             m_devices.append(info);
+            qInfo() << "Discovery found new device:" << info.hostname << info.ip << info.port;
         }
 
         emit deviceFound(info);

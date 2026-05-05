@@ -1,4 +1,5 @@
 #include "transfer.h"
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -33,6 +34,7 @@ FileTransfer::FileTransfer(QObject *parent)
     , m_transferAccepted(false)
 {
     connect(m_server, &QTcpServer::newConnection, this, &FileTransfer::acceptConnection);
+    qInfo() << "FileTransfer initialized";
 }
 
 FileTransfer::~FileTransfer() {
@@ -40,10 +42,15 @@ FileTransfer::~FileTransfer() {
 }
 
 void FileTransfer::startListening() {
-    m_server->listen(QHostAddress::AnyIPv4, TRANSFER_PORT);
+    if (m_server->listen(QHostAddress::AnyIPv4, TRANSFER_PORT)) {
+        qInfo() << "Transfer TCP server listening on port" << TRANSFER_PORT;
+    } else {
+        qWarning() << "Transfer TCP listen failed on port" << TRANSFER_PORT << ":" << m_server->errorString();
+    }
 }
 
 void FileTransfer::stopListening() {
+    qInfo() << "Transfer listener stopping";
     m_server->close();
     if (m_sendSocket) {
         m_sendSocket->disconnect();
@@ -108,11 +115,14 @@ void FileTransfer::openNextReceiveFile() {
 
     m_receiveFile = new QFile(m_downloadDir + "/" + m_receiveFilename);
     if (!m_receiveFile->open(QFile::WriteOnly)) {
+        qWarning() << "Cannot open receive file for writing:" << m_receiveFile->fileName() << m_receiveFile->errorString();
         emit transferError("Cannot open file for writing: " + m_receiveFilename);
         delete m_receiveFile;
         m_receiveFile = nullptr;
         return;
     }
+
+    qInfo() << "Receiving file:" << m_receiveFile->fileName() << "size" << m_receiveFilesize;
 }
 
 void FileTransfer::acceptConnection() {
@@ -127,12 +137,15 @@ void FileTransfer::acceptConnection() {
 
     m_receiveSocket = socket;
     resetReceiveState();
+    qInfo() << "Incoming transfer connection from" << m_receiveSocket->peerAddress().toString() << m_receiveSocket->peerPort();
 
     connect(m_receiveSocket, &QTcpSocket::readyRead, this, &FileTransfer::readIncomingData);
     connect(m_receiveSocket, &QTcpSocket::disconnected, this, [this]() {
+        qInfo() << "Receive socket disconnected";
         resetReceiveState();
     });
     connect(m_receiveSocket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        qWarning() << "Receive socket error:" << m_receiveSocket->errorString();
         emit transferError(m_receiveSocket->errorString());
         resetReceiveState();
     });
@@ -159,6 +172,7 @@ void FileTransfer::readIncomingData() {
             QByteArray headerData = m_receiveSocket->read(headerSize);
             QJsonDocument doc = QJsonDocument::fromJson(headerData);
             if (!doc.isObject()) {
+                qWarning() << "Invalid transfer header JSON";
                 emit transferError("Invalid header format");
                 return;
             }
@@ -249,6 +263,7 @@ void FileTransfer::handleTransferRequest(const QJsonObject &obj) {
     for (const TransferFile &f : request.files) {
         m_totalBytes += f.size;
     }
+    qInfo() << "Transfer request parsed from" << request.senderIp << "files" << request.files.size() << "total bytes" << m_totalBytes;
 
     // Create download directory if needed
     QDir dir;
@@ -276,8 +291,10 @@ void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> 
     for (const TransferFile &f : files) {
         m_totalBytes += f.size;
     }
+    qInfo() << "Preparing outbound transfer to" << targetIp << "files" << files.size() << "total bytes" << m_totalBytes;
 
     connect(m_sendSocket, &QTcpSocket::connected, this, [this, targetIp]() {
+        qInfo() << "Send socket connected to" << targetIp;
         // Build header JSON
         QJsonObject obj;
         obj["type"] = "transfer_request";
@@ -313,6 +330,13 @@ void FileTransfer::sendFiles(const QString &targetIp, const QList<TransferFile> 
 
     connect(m_sendSocket, &QTcpSocket::bytesWritten, this, &FileTransfer::onBytesWritten);
     connect(m_sendSocket, &QTcpSocket::disconnected, this, [this]() {
+        qInfo() << "Send socket disconnected";
+        cleanupSendState();
+    });
+    connect(m_sendSocket, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        const QString error = m_sendSocket ? m_sendSocket->errorString() : QStringLiteral("Unknown socket error");
+        qWarning() << "Send socket error:" << error;
+        emit transferError(error);
         cleanupSendState();
     });
 
@@ -331,12 +355,14 @@ void FileTransfer::openNextSendFile() {
     const TransferFile &file = m_sendQueue.at(m_currentFileIndex);
     m_currentSendFile = new QFile(file.path);
     if (!m_currentSendFile->open(QFile::ReadOnly)) {
+        qWarning() << "Cannot open send file for reading:" << file.path << m_currentSendFile->errorString();
         emit transferError("Cannot open file for reading: " + file.path);
         delete m_currentSendFile;
         m_currentSendFile = nullptr;
         return;
     }
     m_currentFileOffset = 0;
+    qInfo() << "Sending file:" << file.path << "size" << file.size;
 }
 
 void FileTransfer::onBytesWritten(qint64 bytes) {
@@ -384,6 +410,7 @@ void FileTransfer::sendFileData() {
 
         if (m_currentFileIndex >= m_sendQueue.size()) {
             // All files sent
+            qInfo() << "Outbound transfer finished";
             emit transferCompleted();
             cleanupSendState();
             return;
